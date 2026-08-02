@@ -1,0 +1,58 @@
+# render_shrink.cxc -- master script. Run it with:
+#
+#     chimerax --offscreen --script render_shrink.cxc
+#
+# --offscreen renders without a display, which is what you want on a cluster
+# node. Drop it to watch the shot build in a window.
+#
+# Everything it opens is written by prep_shrink.py, so run that first:
+#
+#     python3 prep_shrink.py --design your_design.cif --receptor input/6w74.pdb
+#
+# Paths below are relative to the working directory, not to this file. Run
+# from the repository root.
+
+# --------------------------------------------------------------------------
+# models, palette and choreography
+# --------------------------------------------------------------------------
+# 00_open.cxc carries the open order and the `coordset true` flags; both are
+# generated because the numbering depends on whether a full-length model
+# exists. generated.cxc carries the palette, the named selections, the
+# playback aliases with frame counts baked in, and the counter text with the
+# real measured numbers.
+open output/00_open.cxc
+open output/generated.cxc
+open 00_setup.cxc
+
+# --------------------------------------------------------------------------
+# output
+# --------------------------------------------------------------------------
+windowsize 1920 1080
+
+# supersample 3 is 9x the pixels per frame and the single biggest quality
+# lever here. Drop it to 1 while blocking timing, put it back for the final
+# pass. Budget roughly 1-5 s/frame at 1080p supersample 3, so about half an
+# hour for the ~315 frames this shot runs to.
+movie record supersample 3 format png
+
+open 10_shots.cxc
+
+movie encode output/e3_shrink.mp4 framerate 30 quality high
+exit
+
+# --------------------------------------------------------------------------
+# compositing over the animated sequence instead of cutting to it
+# --------------------------------------------------------------------------
+# mp4 cannot carry an alpha channel. To get the molecular shot on a
+# transparent background so it can sit over the cartoon frames, replace the
+# three commands above with:
+#
+#   set bgColor none
+#   movie record supersample 3 format png directory output/png transparentBackground true
+#   open 10_shots.cxc
+#   movie stop
+#
+# which leaves a numbered PNG sequence in output/png/ for the editor.
+#
+# Note that `lighting soft` shadows land on the molecule itself, not on a
+# ground plane, so they survive the transparent background intact.

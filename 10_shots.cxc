@@ -1,0 +1,110 @@
+# 10_shots.cxc -- the choreography. This is the file to edit when retiming.
+#
+# Every motion command is followed by `wait <same number>`. ChimeraX queues
+# motion over N frames and returns immediately; without the wait, the next
+# command starts on top of the previous one and the movie records a pile-up.
+#
+# Frame budget at 30 fps (~11 s):
+#     shot 1  establish     60   2.0 s
+#     shot 2  pocket        45   1.5 s
+#     shot 3  dissolve      45   1.5 s   (= dissolve trajectory length)
+#     shot 4  condense      90   3.0 s   (= condense trajectory length)
+#     shot 5  reveal        75   2.5 s   (= breathe trajectory length)
+#
+# Shots 3-5 must match the trajectory lengths that prep_shrink.py baked into
+# playDissolve / playCondense / playBreathe in generated.cxc. Change the
+# durations with prep's --dissolve-sec / --condense-sec / --breathe-sec and
+# rerun prep; do not edit the counts here alone or playback and recording
+# drift apart.
+
+# ==========================================================================
+# shot 1 -- the whole ligase, turning
+# ==========================================================================
+show #1 models
+show #1 cartoons
+surface #1 resolution 3 probeRadius 1.4
+transparency #1 62 target s
+color #1 cE3 target s
+show ligandRef models
+labelBefore
+labelMotif
+
+view #1 pad 0.10
+turn y 1.5 60
+wait 60
+
+# ==========================================================================
+# shot 2 -- push into the pocket, hotspots ignite
+# ==========================================================================
+hide #1 models
+show #2 models
+show #2 cartoons
+surface #2 resolution 3 probeRadius 1.4
+transparency #2 68 target s
+color #2 cE3 target s
+
+view ligandRef pad 1.4 frames 45
+# The ignition: hotspots ramp from the motif colour to the hotspot colour
+# while their radius swells. $1 runs over the given range across the frames.
+perframe "color hotspotsRef cHotspot; size hotspotsRef ballScale $1" range 0.3,1.1 frames 45
+show hotspotsRef atoms
+style hotspotsRef ball
+wait 45
+~perframe
+
+# ==========================================================================
+# shot 3 -- the ligase disintegrates around the retained motif
+# ==========================================================================
+hide #2 models
+hide #2 surfaces
+show #5 models
+view dissolveKeep pad 3.2 frames 45
+
+playDissolve
+fadeDissolve
+wait 45
+~perframe
+
+# ==========================================================================
+# shot 4 -- the binder condenses out of noise
+# ==========================================================================
+hide #5 models
+show #4 models
+show #6 models
+labelStats
+view #6 pad 0.25 frames 20
+
+playCondense
+fadeCondense
+# Beads shrink as the fold resolves, so the cloud tightens rather than just
+# translating inwards.
+perframe "size #6 ballScale $1" range 0.62,0.34 frames 90
+wait 90
+~perframe
+
+# ==========================================================================
+# shot 5 -- reveal, with a ghost of the original behind it
+# ==========================================================================
+hide #6 models
+hide #4 models
+show #7 models
+show #7 cartoons
+surface #7 & protein resolution 3 probeRadius 1.4
+transparency #7 55 target s
+color #7 cBinder target s
+labelAfter
+
+# the ghost: the original, unlit, behind the new one
+show #1 models
+show #1 cartoons
+hide #1 surfaces
+color #1 cGhost
+transparency #1 72 target c
+cartoon style #1 modeh tube rad 0.5 sides 8
+
+playBreathe
+view #7 pad 0.55 frames 75
+turn y 0.6 75
+wait 75
+
+labelsOff

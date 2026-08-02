@@ -1,0 +1,465 @@
+{
+  "switches": 3,
+  "effector": "VP64",
+  "vectors": {
+    "AAV": {
+      "total_kb": 4.7,
+      "regulatory_kb": 1.0,
+      "note": "ITRs + promoter + polyA eat ~1 kb. Single-vector coding room ~3.7 kb."
+    },
+    "Lentivirus": {
+      "total_kb": 9.0,
+      "regulatory_kb": 2.5,
+      "note": "Titre falls off steeply past ~8 kb genomic. Coding room ~6.5 kb."
+    },
+    "PiggyBac": {
+      "total_kb": 100.0,
+      "regulatory_kb": 2.0,
+      "note": "Effectively unlimited for this construct; not a viral vector."
+    },
+    "Plasmid": {
+      "total_kb": 100.0,
+      "regulatory_kb": 2.0,
+      "note": "Transfection only. Fine for HEK293T validation, not for CAR-T."
+    }
+  },
+  "results": [
+    {
+      "construct": {
+        "e3_module": "binder_denovo",
+        "effector": "VP64",
+        "switches": 3,
+        "parts": [
+          {
+            "name": "dCas9",
+            "aa_each": 1368,
+            "copies": 1,
+            "aa_total": 1368
+          },
+          {
+            "name": "NLS",
+            "aa_each": 7,
+            "copies": 2,
+            "aa_total": 14
+          },
+          {
+            "name": "tag",
+            "aa_each": 12,
+            "copies": 1,
+            "aa_total": 12
+          },
+          {
+            "name": "binder_denovo",
+            "aa_each": 132,
+            "copies": 3,
+            "aa_total": 396
+          },
+          {
+            "name": "VP64",
+            "aa_each": 56,
+            "copies": 3,
+            "aa_total": 168
+          },
+          {
+            "name": "linker",
+            "aa_each": 20,
+            "copies": 6,
+            "aa_total": 120
+          }
+        ],
+        "obligate_partners": [],
+        "total_aa": 2078,
+        "coding_bp": 6237,
+        "coding_kb": 6.24,
+        "note": "RFdiffusionAA design against the 6W74 pocket, contig 120-140."
+      },
+      "fits": {
+        "AAV": {
+          "coding_room_kb": 3.7,
+          "fits": false,
+          "headroom_kb": -2.54
+        },
+        "Lentivirus": {
+          "coding_room_kb": 6.5,
+          "fits": true,
+          "headroom_kb": 0.26
+        },
+        "PiggyBac": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 91.76
+        },
+        "Plasmid": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 91.76
+        }
+      }
+    },
+    {
+      "construct": {
+        "e3_module": "BIR3_ciap1",
+        "effector": "VP64",
+        "switches": 3,
+        "parts": [
+          {
+            "name": "dCas9",
+            "aa_each": 1368,
+            "copies": 1,
+            "aa_total": 1368
+          },
+          {
+            "name": "NLS",
+            "aa_each": 7,
+            "copies": 2,
+            "aa_total": 14
+          },
+          {
+            "name": "tag",
+            "aa_each": 12,
+            "copies": 1,
+            "aa_total": 12
+          },
+          {
+            "name": "BIR3_ciap1",
+            "aa_each": 110,
+            "copies": 3,
+            "aa_total": 330
+          },
+          {
+            "name": "VP64",
+            "aa_each": 56,
+            "copies": 3,
+            "aa_total": 168
+          },
+          {
+            "name": "linker",
+            "aa_each": 20,
+            "copies": 6,
+            "aa_total": 120
+          }
+        ],
+        "obligate_partners": [],
+        "total_aa": 2012,
+        "coding_bp": 6039,
+        "coding_kb": 6.04,
+        "note": "Isolated cIAP1 BIR3 domain. Folds and binds SMAC mimetics alone."
+      },
+      "fits": {
+        "AAV": {
+          "coding_room_kb": 3.7,
+          "fits": false,
+          "headroom_kb": -2.34
+        },
+        "Lentivirus": {
+          "coding_room_kb": 6.5,
+          "fits": true,
+          "headroom_kb": 0.46
+        },
+        "PiggyBac": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 91.96
+        },
+        "Plasmid": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 91.96
+        }
+      }
+    },
+    {
+      "construct": {
+        "e3_module": "CRBN_midi",
+        "effector": "VP64",
+        "switches": 3,
+        "parts": [
+          {
+            "name": "dCas9",
+            "aa_each": 1368,
+            "copies": 1,
+            "aa_total": 1368
+          },
+          {
+            "name": "NLS",
+            "aa_each": 7,
+            "copies": 2,
+            "aa_total": 14
+          },
+          {
+            "name": "tag",
+            "aa_each": 12,
+            "copies": 1,
+            "aa_total": 12
+          },
+          {
+            "name": "CRBN_midi",
+            "aa_each": 380,
+            "copies": 3,
+            "aa_total": 1140
+          },
+          {
+            "name": "VP64",
+            "aa_each": 56,
+            "copies": 3,
+            "aa_total": 168
+          },
+          {
+            "name": "linker",
+            "aa_each": 20,
+            "copies": 6,
+            "aa_total": 120
+          }
+        ],
+        "obligate_partners": [],
+        "total_aa": 2822,
+        "coding_bp": 8469,
+        "coding_kb": 8.47,
+        "note": "8RQ9 DDB1-independent construct: DDB1-binding bundle deleted, 12 stabilising mutations. Length approximate."
+      },
+      "fits": {
+        "AAV": {
+          "coding_room_kb": 3.7,
+          "fits": false,
+          "headroom_kb": -4.77
+        },
+        "Lentivirus": {
+          "coding_room_kb": 6.5,
+          "fits": false,
+          "headroom_kb": -1.97
+        },
+        "PiggyBac": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 89.53
+        },
+        "Plasmid": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 89.53
+        }
+      }
+    },
+    {
+      "construct": {
+        "e3_module": "VHL",
+        "effector": "VP64",
+        "switches": 3,
+        "parts": [
+          {
+            "name": "dCas9",
+            "aa_each": 1368,
+            "copies": 1,
+            "aa_total": 1368
+          },
+          {
+            "name": "NLS",
+            "aa_each": 7,
+            "copies": 2,
+            "aa_total": 14
+          },
+          {
+            "name": "tag",
+            "aa_each": 12,
+            "copies": 1,
+            "aa_total": 12
+          },
+          {
+            "name": "VHL",
+            "aa_each": 443,
+            "copies": 3,
+            "aa_total": 1329
+          },
+          {
+            "name": "VP64",
+            "aa_each": 56,
+            "copies": 3,
+            "aa_total": 168
+          },
+          {
+            "name": "linker",
+            "aa_each": 20,
+            "copies": 6,
+            "aa_total": 120
+          }
+        ],
+        "obligate_partners": [
+          "EloB (118 aa)",
+          "EloC (112 aa)"
+        ],
+        "total_aa": 3011,
+        "coding_bp": 9036,
+        "coding_kb": 9.04,
+        "note": "pVHL30 needs ElonginB and ElonginC to fold and stay soluble."
+      },
+      "fits": {
+        "AAV": {
+          "coding_room_kb": 3.7,
+          "fits": false,
+          "headroom_kb": -5.34
+        },
+        "Lentivirus": {
+          "coding_room_kb": 6.5,
+          "fits": false,
+          "headroom_kb": -2.54
+        },
+        "PiggyBac": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 88.96
+        },
+        "Plasmid": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 88.96
+        }
+      }
+    },
+    {
+      "construct": {
+        "e3_module": "CRBN",
+        "effector": "VP64",
+        "switches": 3,
+        "parts": [
+          {
+            "name": "dCas9",
+            "aa_each": 1368,
+            "copies": 1,
+            "aa_total": 1368
+          },
+          {
+            "name": "NLS",
+            "aa_each": 7,
+            "copies": 2,
+            "aa_total": 14
+          },
+          {
+            "name": "tag",
+            "aa_each": 12,
+            "copies": 1,
+            "aa_total": 12
+          },
+          {
+            "name": "CRBN",
+            "aa_each": 1582,
+            "copies": 3,
+            "aa_total": 4746
+          },
+          {
+            "name": "VP64",
+            "aa_each": 56,
+            "copies": 3,
+            "aa_total": 168
+          },
+          {
+            "name": "linker",
+            "aa_each": 20,
+            "copies": 6,
+            "aa_total": 120
+          }
+        ],
+        "obligate_partners": [
+          "DDB1 (1140 aa)"
+        ],
+        "total_aa": 6428,
+        "coding_bp": 19287,
+        "coding_kb": 19.29,
+        "note": "Cereblon needs DDB1. This is the 9FJX arrangement."
+      },
+      "fits": {
+        "AAV": {
+          "coding_room_kb": 3.7,
+          "fits": false,
+          "headroom_kb": -15.59
+        },
+        "Lentivirus": {
+          "coding_room_kb": 6.5,
+          "fits": false,
+          "headroom_kb": -12.79
+        },
+        "PiggyBac": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 78.71
+        },
+        "Plasmid": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 78.71
+        }
+      }
+    },
+    {
+      "construct": {
+        "e3_module": "cIAP1_full",
+        "effector": "VP64",
+        "switches": 3,
+        "parts": [
+          {
+            "name": "dCas9",
+            "aa_each": 1368,
+            "copies": 1,
+            "aa_total": 1368
+          },
+          {
+            "name": "NLS",
+            "aa_each": 7,
+            "copies": 2,
+            "aa_total": 14
+          },
+          {
+            "name": "tag",
+            "aa_each": 12,
+            "copies": 1,
+            "aa_total": 12
+          },
+          {
+            "name": "cIAP1_full",
+            "aa_each": 618,
+            "copies": 3,
+            "aa_total": 1854
+          },
+          {
+            "name": "VP64",
+            "aa_each": 56,
+            "copies": 3,
+            "aa_total": 168
+          },
+          {
+            "name": "linker",
+            "aa_each": 20,
+            "copies": 6,
+            "aa_total": 120
+          }
+        ],
+        "obligate_partners": [],
+        "total_aa": 3536,
+        "coding_bp": 10611,
+        "coding_kb": 10.61,
+        "note": "Full-length BIRC2. Nobody would fuse this, listed for contrast."
+      },
+      "fits": {
+        "AAV": {
+          "coding_room_kb": 3.7,
+          "fits": false,
+          "headroom_kb": -6.91
+        },
+        "Lentivirus": {
+          "coding_room_kb": 6.5,
+          "fits": false,
+          "headroom_kb": -4.11
+        },
+        "PiggyBac": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 87.39
+        },
+        "Plasmid": {
+          "coding_room_kb": 98.0,
+          "fits": true,
+          "headroom_kb": 87.39
+        }
+      }
+    }
+  ]
+}

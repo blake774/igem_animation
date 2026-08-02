@@ -1,0 +1,100 @@
+# 00_setup.cxc -- look and base representations.
+#
+# Sourced by render_shrink.cxc after 00_open.cxc and generated.cxc, so every
+# model number and named selection below is already defined.
+#
+# The three settings that do most of the work here are `lighting soft`,
+# `lighting shadows true` and `graphics silhouettes true`. Soft lighting is
+# ChimeraX's ambient-occlusion mode: it samples visibility per vertex, so
+# crevices darken and the molecule reads as a solid object instead of a
+# flat-shaded blob. Silhouettes then give it the drawn edge that survives
+# compression and small screens.
+
+# ------------------------------------------------------------------ canvas
+set bgColor black
+graphics silhouettes true width 1.6 color black
+set subdivision 4
+
+# ---------------------------------------------------------------- lighting
+lighting soft
+lighting multiShadow 64
+lighting shadows true
+lighting intensity 1.05
+lighting fillIntensity 0.32
+lighting ambientIntensity 0.85
+lighting depthCue false
+material dull
+material reflectivity 0.28
+
+# Ambient occlusion is what sells this; when iterating on timing rather than
+# looks, drop multiShadow to 16 and the render gets several times faster.
+
+# ---------------------------------------------------------- hide everything
+# Shots turn on exactly what they need. Starting from "nothing visible" means
+# a mistake shows up as a missing object rather than as a stray one hanging
+# around from three shots ago.
+hide #1-7 models
+hide #1-7 atoms
+hide #1-7 cartoons
+hide #1-7 surfaces
+
+# ------------------------------------------------------ base look per model
+# 1 -- the "before" structure (full-length cIAP1, or BIR3 standing in)
+cartoon #1
+cartoon style #1 modeh tube rad 1.0 sides 12
+color #1 cE3
+color motifFull cMotif
+
+# 2 -- crystal receptor
+cartoon #2
+cartoon style #2 modeh tube rad 1.0 sides 12
+color #2 cE3
+color motifRef cMotif
+color hotspotsRef cHotspot
+style ligandRef ball
+size ligandRef ballScale 0.55
+color ligandRef cLigand
+style zincSeed sphere
+color #2:ZN cZinc
+
+# 3 -- the de novo binder
+cartoon #3
+cartoon style #3 modeh tube rad 1.1 sides 12
+color binder cBinder
+
+# 4 -- the seed that survives the dissolve
+cartoon #4
+cartoon style #4 modeh tube rad 1.1 sides 12
+color motifSeed cMotif
+color hotspotsSeed cHotspot
+style ligandSeed ball
+size ligandSeed ballScale 0.55
+color ligandSeed cLigand
+style zincSeed sphere
+size zincSeed ballScale 0.9
+color zincSeed cZinc
+
+# 5 -- dissolve. Spheres, not cartoon: once the bulk starts flying apart the
+# backbone geometry is meaningless and a ribbon drawn through it whips across
+# the screen. Small spheres read as fragments and behave at every frame.
+style #5 sphere
+size #5 ballScale 0.28
+color dissolveBulk cE3
+color dissolveKeep cMotif
+color dissolveHet cLigand
+color #5:ZN cZinc
+
+# 6 -- condensation. Beads for the same reason, and because mid-diffusion
+# there is no secondary structure for ChimeraX to assign.
+style #6 sphere
+size #6 ballScale 0.45
+color #6 cBinder
+
+# 7 -- the final breathing complex
+cartoon #7
+cartoon style #7 modeh tube rad 1.1 sides 12
+color #7 cBinder
+color #7/A cMotif
+style #7 & ~protein ball
+size #7 & ~protein ballScale 0.6
+color #7:ZN cZinc

@@ -1,0 +1,21 @@
+# Everything prep_shrink.py generates. It rebuilds in seconds, and right now
+# it is built from the PLACEHOLDER binder -- committing it would put stand-in
+# coordinates in the repo where they can be mistaken for the real design.
+output/*
+!output/payload_budget.json
+!output/payload_cassette.svg
+
+# Encoded movies. Keep these out of git history; hand them to the editor
+# directly or attach them to a release.
+*.mp4
+*.mov
+
+# Fetched structures. 6W74 comes from RCSB and the AlphaFold model from
+# AFDB; both are reproducible with prep_shrink.py given network access.
+input/*.pdb
+input/*.cif
+!input/6w74.pdb
+
+__pycache__/
+*.pyc
+.DS_Store
