@@ -195,7 +195,15 @@ Read `output/metrics.json` and check:
 
 **"Cannot continue without 6W74."** Network blocked. Download `https://files.rcsb.org/download/6W74.pdb` and pass `--receptor`.
 
-**"WARNING: no full-length model."** AlphaFold DB unreachable. Get `AF-Q13490-F1-model_v4.pdb` and pass `--fulllength`. Without it the opening shot falls back to BIR3 and the size claim gets much weaker — worth fixing rather than shipping around.
+**"WARNING: no full-length model."** AlphaFold DB unreachable. Get
+`AF-Q13490-F1-model_v4.pdb` and pass `--fulllength`. Without it the opening
+shot falls back to BIR3 and the size claim gets much weaker — worth fixing
+rather than shipping around. Two things to expect once you do supply it:
+AlphaFold's full-length cIAP1 has long low-pLDDT linkers between the BIR
+domains that will read as spaghetti in shot 1, so consider trimming below
+pLDDT 50 or leaning on the surface rather than the ribbon; and the metaball
+surface in `render_blender.py` gets roughly seven times the elements, which
+it compensates for by coarsening its resolution automatically.
 
 **"WARNING: best chain X matched only n/4 fingerprint residues."** The chain auto-detection is looking for GLY312 / LEU313 / ARG314 / GLU325. If it can't find them you may have a different 6W74 file or a renumbered one.
 

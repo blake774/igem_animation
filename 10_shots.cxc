@@ -100,7 +100,7 @@ show #1 cartoons
 hide #1 surfaces
 color #1 cGhost
 transparency #1 72 target c
-cartoon style #1 modeh tube rad 0.5 sides 8
+cartoon style #1 modeHelix tube radius 0.5 sides 8
 
 playBreathe
 view #7 pad 0.55 frames 75

@@ -13,7 +13,7 @@
 # ------------------------------------------------------------------ canvas
 set bgColor black
 graphics silhouettes true width 1.6 color black
-set subdivision 4
+graphics quality 3
 
 # ---------------------------------------------------------------- lighting
 lighting soft
@@ -41,30 +41,31 @@ hide #1-7 surfaces
 # ------------------------------------------------------ base look per model
 # 1 -- the "before" structure (full-length cIAP1, or BIR3 standing in)
 cartoon #1
-cartoon style #1 modeh tube rad 1.0 sides 12
+cartoon style #1 modeHelix tube radius 1.0 sides 12
 color #1 cE3
 color motifFull cMotif
 
 # 2 -- crystal receptor
 cartoon #2
-cartoon style #2 modeh tube rad 1.0 sides 12
+cartoon style #2 modeHelix tube radius 1.0 sides 12
 color #2 cE3
 color motifRef cMotif
 color hotspotsRef cHotspot
 style ligandRef ball
 size ligandRef ballScale 0.55
 color ligandRef cLigand
-style zincSeed sphere
+style #2:ZN sphere
+size #2:ZN ballScale 0.9
 color #2:ZN cZinc
 
 # 3 -- the de novo binder
 cartoon #3
-cartoon style #3 modeh tube rad 1.1 sides 12
+cartoon style #3 modeHelix tube radius 1.1 sides 12
 color binder cBinder
 
 # 4 -- the seed that survives the dissolve
 cartoon #4
-cartoon style #4 modeh tube rad 1.1 sides 12
+cartoon style #4 modeHelix tube radius 1.1 sides 12
 color motifSeed cMotif
 color hotspotsSeed cHotspot
 style ligandSeed ball
@@ -92,7 +93,7 @@ color #6 cBinder
 
 # 7 -- the final breathing complex
 cartoon #7
-cartoon style #7 modeh tube rad 1.1 sides 12
+cartoon style #7 modeHelix tube radius 1.1 sides 12
 color #7 cBinder
 color #7/A cMotif
 style #7 & ~protein ball

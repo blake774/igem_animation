@@ -271,6 +271,11 @@ def make_metaball_surface(name: str, centres: np.ndarray, radii: np.ndarray,
     """
     if len(centres) == 0:
         return None
+    # Metaball tessellation cost climbs steeply with element count. BIR3 is
+    # ~700 atoms and fine; a full-length AlphaFold model is ~5000 and would
+    # crawl at the same resolution, so coarsen rather than stall.
+    if len(centres) > 1500:
+        resolution *= (len(centres) / 1500.0) ** 0.34
     mb = bpy.data.metaballs.new(name)
     mb.resolution = resolution
     mb.render_resolution = resolution
