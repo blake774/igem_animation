@@ -46,8 +46,14 @@ Both `.pdb` and `.cif` work — `prep_shrink.py` reads either.
 ## 3 — your design, off the Rice cluster
 
 Rice's shared HPC cluster is **NOTS**, login node `nots.rice.edu`. If your
-group runs somewhere else, substitute the hostname; everything below is
-otherwise cluster-agnostic.
+group runs somewhere else, substitute the hostname — everything below is
+otherwise cluster-agnostic. Two things worth confirming rather than assuming,
+since they vary between clusters and between allocations on the same one:
+
+```bash
+echo "$SCRATCH"      # may be empty; then use /scratch/$USER
+sinfo -s             # the real GPU partition name for the SLURM script below
+```
 
 ### Find the files
 
@@ -151,7 +157,7 @@ conda activate SE3nv                     # your RFdiffusion env
 
 cd ~/RFdiffusion
 python3 scripts/run_inference.py \
-    inference.output_prefix=$SCRATCH/traj_rerun/ciap1_binder \
+    inference.output_prefix=${SCRATCH:-/scratch/$USER}/traj_rerun/ciap1_binder \
     ... \
     inference.write_trajectory=True
 ```
@@ -161,8 +167,8 @@ Submit with `sbatch rfd_traj.sh`, watch with `squeue -u $USER`.
 Trajectories land in a `traj/` subdirectory beside the output prefix:
 
 ```
-$SCRATCH/traj_rerun/traj/ciap1_binder_0_pX0_traj.pdb     <- use this one
-$SCRATCH/traj_rerun/traj/ciap1_binder_0_Xt-1_traj.pdb
+<output_prefix dir>/traj/ciap1_binder_0_pX0_traj.pdb     <- use this one
+<output_prefix dir>/traj/ciap1_binder_0_Xt-1_traj.pdb
 ```
 
 Use the **pX0** file. `Xt-1` is the noised input at each step and looks like
