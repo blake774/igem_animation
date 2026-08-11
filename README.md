@@ -108,7 +108,11 @@ Without it you get a variance-preserving synthetic schedule: cosine noise decay,
 | `validate.py` | geometric checks on the trajectories |
 | `test_fallbacks.py` | exercises the fallback code paths |
 | `make_testdata.py` | placeholder binder + trajectory, for offline runs |
+| `check_design.py` | is this candidate file the right design? runs on a login node |
+| `fetch_inputs.sh` | downloads and verifies the two public structures |
 | `payload_budget.py` | construct size arithmetic + cassette SVG |
+| `HANDOFF.md` | **what to retrieve from the cluster, and how to verify it** |
+| `INPUTS.md` | where every input comes from, and what each missing one costs |
 | `README_payload.md` | why the "too big" claim fails, and what replaces it |
 
 `output/00_open.cxc` is generated too, and it carries the open order. The
