@@ -36,6 +36,9 @@ Output is a ~11 s 1080p sequence in five shots: full-length cIAP1 turning → pu
 ## Quick start
 
 ```bash
+bash fetch_inputs.sh          # 6W74 + full-length cIAP1, downloaded and verified
+                              # your design comes off the cluster -- see INPUTS.md
+
 # No design file yet? Build a placeholder and see the whole thing run:
 python3 make_testdata.py
 python3 prep_shrink.py --design input/synthetic_design.cif \
@@ -146,12 +149,20 @@ Three implementation notes, because each cost a debugging session:
   physical and its depth of field is a real thin-lens model. At 1 unit = 1 Å
   a protein is 40 metres wide, lights 50 m away render black, and no f-stop
   produces visible bokeh.
-- **Cameras are framed by `fit_distance()`**, which solves the vertical field
-  of view for the subject's actual bounding radius. Framing by a multiple of
-  the radius of gyration — the obvious thing — pushes the camera inside
-  anything whose mass is centrally concentrated, which all of these are.
-  It also means the choreography survives swapping the 87-residue BIR3 for
-  the 618-residue full-length model without retuning.
+- **Cameras are framed by `fit_distance()`**, which projects the subject's
+  atoms through the camera and solves for the distance that contains them.
+  Two cheaper things were tried first and both fail on this shot: framing by
+  a multiple of the radius of gyration pushes the camera *inside* anything
+  centrally concentrated, and fitting a bounding sphere is isotropic, so an
+  elongated molecule viewed side-on is framed as if it were as tall as it is
+  long. Full-length cIAP1 is four BIR domains on linkers, i.e. very
+  elongated — projection framing puts the camera 2.5× closer than a sphere
+  fit for the same subject. This is what lets the choreography survive
+  swapping the 87-residue BIR3 for the 618-residue model with no retuning.
+- **The backbone tube splits at chain breaks.** A Ca trace drawn straight
+  through a gap lays a rod across the whole molecule, and crystal structures
+  break wherever a loop was too disordered to model — so the artefact lands
+  exactly where the protein is most interesting.
 - **Geometry is rebuilt per frame, not keyframed.** A trajectory is already
   an explicit coordinate list, so a keyframe layer adds fragile state and
   buys nothing. A frame is a pure function of its index, which is also why

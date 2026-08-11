@@ -328,6 +328,95 @@ def test_pipeline_fallbacks(verbose: bool) -> None:
               r.stdout.strip().split("\n")[-1] if r.stdout else "")
 
 
+def make_fulllength_stub(path: str) -> int:
+    """
+    A throwaway multi-domain structure, built by tiling BIR3 along a line.
+
+    Not a model of anything -- its only job is to exercise the branches that
+    run when 01_ciap1_full.pdb exists, so that dropping in the real
+    AF-Q13490 does not hit them for the first time mid-render. It is written
+    to a temp dir and never leaves it.
+    """
+    st = S.read_pdb(RECEPTOR)
+    prot = [a for a in st.atoms if a.record == "ATOM"]
+    rng = np.random.default_rng(2)
+    out, resoff = [], 0
+    for k in range(7):
+        shift = rng.normal(scale=18.0, size=3) + np.array([k * 22.0, 0.0, 0.0])
+        for a in prot:
+            out.append(S.Atom(record="ATOM", name=a.name, resname=a.resname,
+                              chain="A", resseq=a.resseq - 265 + resoff,
+                              x=a.x + shift[0], y=a.y + shift[1],
+                              z=a.z + shift[2], bfactor=80.0,
+                              element=a.element))
+        resoff += 88
+    big = S.Structure(out).select(lambda a: a.resseq <= 618)
+    big.renumber_serials()
+    S.write_pdb(big, path, remarks=["THROWAWAY STUB - not a real structure"])
+    return big.n_protein_residues()
+
+
+def test_fulllength_path(verbose: bool) -> None:
+    """The branches that only run when a full-length model is supplied."""
+    if not os.path.exists(RECEPTOR):
+        print(f"  [skip] full-length tests need {RECEPTOR}")
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        make_inputs(tmp, verbose)
+        out = os.path.join(tmp, "output")
+        stub = os.path.join(tmp, "input", "AF-STUB.pdb")
+        n_res = make_fulllength_stub(stub)
+        check("built a multi-domain stub", n_res > 550, f"{n_res} residues")
+
+        rc, log = run_prep(tmp, ["--fulllength", stub,
+                                 "--rfd-traj", os.path.join(tmp, "input",
+                                                            "synthetic_rfd_traj.pdb")],
+                           verbose)
+        check("runs with a full-length model", rc == 0)
+        check("does not warn about a missing full-length model",
+              "no full-length model" not in log)
+        check("writes 01_ciap1_full.pdb",
+              os.path.exists(os.path.join(out, "01_ciap1_full.pdb")))
+
+        opens = [l for l in open(os.path.join(out, "00_open.cxc"))
+                 if l.startswith("open ")]
+        check("00_open.cxc opens the full-length model as #1",
+              len(opens) == 7 and "01_ciap1_full.pdb" in opens[0],
+              opens[0].strip() if opens else "no open lines")
+
+        with open(os.path.join(out, "metrics.json")) as fh:
+            M = json.load(fh)
+        check("reports full_length_residues", M["full_length_residues"] == n_res,
+              str(M["full_length_residues"]))
+        check("reports a shrink factor > 1", M.get("shrink_factor", 0) > 1.0,
+              f"{M.get('shrink_factor')}x")
+        check("counters name the full-length protein",
+              "cIAP1 (full length)" in log)
+
+        # The renderer has to frame it. Import is guarded: bpy is optional.
+        try:
+            import importlib
+            import render_blender as RB
+            importlib.reload(RB)
+        except SystemExit:
+            print("  [skip] renderer framing (bpy not installed)")
+            return
+        A = RB.Assets(out)
+        check("renderer sees the full-length model", A.full is not None)
+        d = RB.fit_distance(A.x_open, A.full_centre, -35.0, 14.0, 48.0, 1.12)
+        span = float(np.linalg.norm(A.x_open - A.full_centre, axis=1).max())
+        check("framing distance is finite and sane",
+              0.0 < d < span * 40, f"{d:.1f} scene units for span {span:.1f}")
+        # An elongated subject must be framed closer than a sphere fit would.
+        sphere_d = RB.fit_distance(
+            np.array([A.full_centre + [span, 0, 0], A.full_centre - [span, 0, 0],
+                      A.full_centre + [0, span, 0], A.full_centre - [0, span, 0],
+                      A.full_centre + [0, 0, span], A.full_centre - [0, 0, span]]),
+            A.full_centre, -35.0, 14.0, 48.0, 1.12)
+        check("projection fit beats a sphere fit on an elongated subject",
+              d < sphere_d, f"{d:.1f} vs {sphere_d:.1f}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -343,6 +432,9 @@ def main() -> int:
 
     print("\n[pipeline fallbacks]")
     test_pipeline_fallbacks(args.verbose)
+
+    print("\n[full-length model path]")
+    test_fulllength_path(args.verbose)
 
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
     for f in FAIL:

@@ -145,7 +145,7 @@ def find_warhead(st: S.Structure, chain: str) -> str | None:
 
 def clean_receptor(path: str, out_pdb: str) -> tuple[S.Structure, dict]:
     head("cleaning 6W74 -> BIR3 docking receptor")
-    raw = S.read_pdb(path)
+    raw = S.read_structure(path)
     log(f"raw: {len(raw)} atoms, chains {''.join(raw.chains())}")
 
     chain = find_ciap1_chain(raw)
@@ -977,7 +977,7 @@ def main() -> int:
 
     full = None
     if full_path:
-        full = S.read_pdb(full_path)
+        full = S.read_structure(full_path)
         full = full.select(lambda a: not a.is_hydrogen())
         full.rename_chain(full.chains()[0], "A")
         full.renumber_serials()

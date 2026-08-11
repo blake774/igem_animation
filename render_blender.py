@@ -241,20 +241,44 @@ def catmull_rom(points: np.ndarray, samples_per_seg: int = 6) -> np.ndarray:
 
 
 def make_tube(name: str, points: np.ndarray, radius: float, material,
-              smooth: int = 6):
-    """Ca trace as a bevelled poly curve."""
+              smooth: int = 6, break_at: float = ang(5.0)):
+    """
+    Ca trace as a bevelled poly curve, one spline per continuous segment.
+
+    Splitting at gaps matters. A Ca trace drawn straight through a chain break
+    lays a rod across the whole molecule, and crystal structures have breaks
+    wherever a loop was too disordered to model -- so the artefact appears
+    exactly where the protein is most interesting. Consecutive Ca are 3.8 A
+    apart, so anything past ~5 A is a break rather than a bond.
+    """
+    points = np.asarray(points, dtype=float).reshape(-1, 3)
     if len(points) < 2:
         return None
-    pts = catmull_rom(points, smooth) if len(points) >= 3 else np.asarray(points)
+
+    gaps = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    cuts = np.flatnonzero(gaps > break_at) + 1
+    segments = np.split(points, cuts) if len(cuts) else [points]
+
     cu = bpy.data.curves.new(name, type="CURVE")
     cu.dimensions = "3D"
     cu.bevel_depth = radius
     cu.bevel_resolution = 3
     cu.use_fill_caps = True
-    sp = cu.splines.new("POLY")
-    sp.points.add(len(pts) - 1)
-    flat = np.concatenate([pts, np.ones((len(pts), 1))], axis=1).reshape(-1)
-    sp.points.foreach_set("co", flat.tolist())
+
+    made = 0
+    for seg in segments:
+        if len(seg) < 2:
+            continue                     # a lone residue has no tube to draw
+        pts = catmull_rom(seg, smooth) if len(seg) >= 3 else seg
+        sp = cu.splines.new("POLY")
+        sp.points.add(len(pts) - 1)
+        flat = np.concatenate([pts, np.ones((len(pts), 1))], axis=1).reshape(-1)
+        sp.points.foreach_set("co", flat.tolist())
+        made += 1
+    if made == 0:
+        bpy.data.curves.remove(cu)
+        return None
+
     obj = bpy.data.objects.new(name, cu)
     bpy.context.scene.collection.objects.link(obj)
     obj.data.materials.append(material)
@@ -443,26 +467,73 @@ SENSOR_MM = 36.0          # Blender's default sensor width
 ASPECT = 9.0 / 16.0
 
 
-def fit_distance(bound_radius: float, lens_mm: float,
-                 margin: float = 1.18) -> float:
-    """
-    How far the camera has to sit to contain a sphere of `bound_radius`.
+def orbit_dir(az_deg: float, el_deg: float) -> np.ndarray:
+    """Unit vector from the subject towards the camera."""
+    az, el = math.radians(az_deg), math.radians(el_deg)
+    return np.array([math.cos(el) * math.cos(az),
+                     math.cos(el) * math.sin(az),
+                     math.sin(el)])
 
-    The vertical field of view is the binding constraint at 16:9, so this
-    solves for that: half-sensor-height / focal-length is tan(vfov/2).
-    Framing by a multiple of the radius of gyration -- which is what this
-    replaces -- silently pushes the camera inside anything whose mass is
-    concentrated centrally, and every one of these molecules is.
+
+def camera_basis(d_hat: np.ndarray) -> tuple:
+    """(right, up) for a camera at +d_hat looking back at the origin, matching
+    Blender's -Z forward / Y up track-quat convention."""
+    fwd = -d_hat
+    world_up = np.array([0.0, 0.0, 1.0])
+    right = np.cross(fwd, world_up)
+    if np.linalg.norm(right) < 1e-6:
+        right = np.array([1.0, 0.0, 0.0])
+    right /= np.linalg.norm(right)
+    up = np.cross(right, fwd)
+    up /= np.linalg.norm(up)
+    return right, up
+
+
+def fit_distance(coords: np.ndarray, centre: np.ndarray, az_deg: float,
+                 el_deg: float, lens_mm: float, margin: float = 1.10,
+                 percentile: float = 97.0) -> float:
     """
+    Camera distance that frames `coords` from the given orbit angle.
+
+    Solves the real projection rather than fitting a bounding sphere. For a
+    point at depth z towards the camera and lateral offset (x, y), it is
+    inside the frame when the camera sits at least
+    `z + max(x*f/half_w, y*f/half_h)` away; the answer is a percentile over
+    the points of that per-point requirement.
+
+    Sphere fitting -- which this replaces -- is isotropic, so an elongated
+    molecule viewed side-on gets framed as if it were as tall as it is long,
+    and ends up a speck in the middle of an empty frame. Full-length cIAP1 is
+    four BIR domains on linkers and is very elongated indeed, so this is the
+    difference between a usable opening shot and an unusable one.
+
+    The percentile (rather than the max) lets a few floppy linker residues
+    clip off the edge instead of dictating the whole shot.
+    """
+    coords = np.asarray(coords, dtype=float).reshape(-1, 3)
+    if len(coords) == 0:
+        return 10.0
+    d_hat = orbit_dir(az_deg, el_deg)
+    right, up = camera_basis(d_hat)
+    rel = coords - np.asarray(centre)
+
+    half_w = SENSOR_MM / 2.0
     half_h = SENSOR_MM * ASPECT / 2.0
-    return bound_radius * margin * lens_mm / half_h
+    x = np.abs(rel @ right)
+    y = np.abs(rel @ up)
+    z = rel @ d_hat                      # +z is towards the camera
+
+    need = z + np.maximum(x * lens_mm / half_w, y * lens_mm / half_h)
+    return float(np.percentile(need, percentile)) * margin
 
 
-def bound_of(coords: np.ndarray, centre: np.ndarray) -> float:
-    """Radius of the smallest sphere about `centre` containing `coords`."""
+def bound_of(coords: np.ndarray, centre: np.ndarray,
+             percentile: float = 96.0) -> float:
+    """Framing radius about `centre`, ignoring the outermost few percent."""
     if len(coords) == 0:
         return 1.0
-    return float(np.linalg.norm(np.asarray(coords) - np.asarray(centre), axis=1).max())
+    d = np.linalg.norm(np.asarray(coords) - np.asarray(centre), axis=1)
+    return float(np.percentile(d, percentile))
 
 
 def orbit(centre: np.ndarray, radius: float, az_deg: float,
@@ -517,17 +588,18 @@ class Assets:
         self.full_centre = (self.full.centre() if self.full is not None
                             else self.centre)
 
-        # Bounding radii, used by fit_distance() so every shot frames its
-        # actual subject. These are what make the choreography survive
+        # Coordinate sets each shot frames on. fit_distance() projects these
+        # through the camera, which is what makes the choreography survive
         # swapping the 87-residue BIR3 for the 618-residue full-length model.
-        self.b_open = bound_of(self.opening.coords(), self.full_centre)
-        self.b_ref = bound_of(self.ref.coords(), self.centre)
-        self.b_seed = bound_of(self.seed.coords(), self.pocket)
-        self.b_cond0 = bound_of(self.condense[0].coords(), self.pocket)
-        self.b_cond1 = bound_of(self.condense[-1].coords(), self.pocket)
-        self.b_final = max(bound_of(self.breathe[0].coords(), self.pocket),
-                           self.b_seed)
-        self.b_ghost = bound_of(self.opening.coords(), self.pocket)
+        self.x_open = self.opening.coords()
+        self.x_ref = self.ref.coords()
+        self.x_seed = self.seed.coords()
+        self.x_cond0 = self.condense[0].coords()
+        self.x_cond1 = self.condense[-1].coords()
+        self.x_final = np.vstack([self.breathe[0].coords(), self.x_seed])
+        # Shot 5 ends wide enough to hold the ghost of the original beside the
+        # binder -- that side-by-side comparison is the point of the shot.
+        self.x_reveal = np.vstack([self.x_final, self.x_open])
 
 
 def atom_arrays(atoms, radius_scale=1.0):
@@ -597,10 +669,10 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
             make_spheres("zn", zx, zr, np.tile(col("zinc"), (len(zx), 1)),
                          None, ico + 1, m_atom)
 
-        lens = 48.0
-        d = fit_distance(A.b_open, lens, 1.20)
+        lens, el = 48.0, 14.0
         az = lerp(-35.0, 55.0, ease(u, 2.0))
-        eye = orbit(A.full_centre, d, az, 14.0)
+        d = fit_distance(A.x_open, A.full_centre, az, el, lens, 1.12)
+        eye = orbit(A.full_centre, d, az, el)
         return eye, A.full_centre, lens, d
 
     # ---------------------------------------------------------- shot 2
@@ -628,11 +700,12 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
 
         t = ease(u, 2.2)
         lens = lerp(48.0, 62.0, t)
+        az, el = lerp(55.0, 88.0, t), lerp(14.0, 6.0, t)
         # push from "the whole domain" to "the pocket and its shoulders"
-        d = lerp(fit_distance(A.b_open, lens, 1.20),
-                 fit_distance(A.b_seed, lens, 0.95), t)
+        d = lerp(fit_distance(A.x_open, A.full_centre, az, el, lens, 1.12),
+                 fit_distance(A.x_seed, A.pocket, az, el, lens, 1.05), t)
         centre = A.full_centre + (A.pocket - A.full_centre) * t
-        eye = orbit(centre, d, lerp(55.0, 88.0, t), lerp(14.0, 6.0, t))
+        eye = orbit(centre, d, az, el)
         return eye, centre, lens, d
 
     # ---------------------------------------------------------- shot 3
@@ -673,10 +746,12 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
                          np.full(int(het.sum()), 0.55), ico + 1, m_atom)
 
         lens = 58.0
+        az, el = lerp(88.0, 118.0, u), lerp(6.0, 18.0, u)
         # Hold wide enough to watch the bulk leave, then settle on what is left.
-        d = lerp(fit_distance(A.b_ref, lens, 1.38),
-                 fit_distance(A.b_seed, lens, 1.10), ease(u, 2.0))
-        eye = orbit(A.pocket, d, lerp(88.0, 118.0, u), lerp(6.0, 18.0, u))
+        d = lerp(fit_distance(A.x_ref, A.pocket, az, el, lens, 1.30),
+                 fit_distance(A.x_seed, A.pocket, az, el, lens, 1.60),
+                 ease(u, 2.0))
+        eye = orbit(A.pocket, d, az, el)
         return eye, A.pocket, lens, d
 
     # ---------------------------------------------------------- shot 4
@@ -713,11 +788,13 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
                          ico + 1, m_atom)
 
         lens = 56.0
+        az, el = lerp(118.0, 168.0, u), lerp(18.0, 10.0, u)
         # Framed off the cloud's own extent at both ends, so the camera
         # closes in exactly as fast as the binder condenses.
-        d = lerp(fit_distance(A.b_cond0, lens, 1.05),
-                 fit_distance(A.b_cond1, lens, 1.12), smoothstep(u))
-        eye = orbit(A.pocket, d, lerp(118.0, 168.0, u), lerp(18.0, 10.0, u))
+        d = lerp(fit_distance(A.x_cond0, A.pocket, az, el, lens, 1.02),
+                 fit_distance(A.x_cond1, A.pocket, az, el, lens, 1.14),
+                 smoothstep(u))
+        eye = orbit(A.pocket, d, az, el)
         return eye, A.pocket, lens, d
 
     # ---------------------------------------------------------- shot 5
@@ -761,11 +838,12 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
                 make_tube("ghost", gca, ang(0.85) * gu, m_ghost)
 
         lens = lerp(56.0, 46.0, u)
+        az, el = lerp(168.0, 205.0, u), lerp(10.0, 20.0, u)
         # Pull back far enough that the ghost of the original fits too.
-        d = lerp(fit_distance(A.b_final, lens, 1.12),
-                 fit_distance(max(A.b_ghost, A.b_final), lens, 1.38),
+        d = lerp(fit_distance(A.x_final, A.pocket, az, el, lens, 1.14),
+                 fit_distance(A.x_reveal, A.pocket, az, el, lens, 1.10),
                  ease(u, 2.0))
-        eye = orbit(A.pocket, d, lerp(168.0, 205.0, u), lerp(10.0, 20.0, u))
+        eye = orbit(A.pocket, d, az, el)
         return eye, A.pocket, lens, d
 
     raise ValueError(f"unknown shot {shot}")
