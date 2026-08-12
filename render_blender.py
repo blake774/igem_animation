@@ -384,27 +384,44 @@ def mat_solid(name: str, rgb: tuple, roughness: float = 0.4,
 # scene setup
 # ---------------------------------------------------------------------------
 
+# Each tier: resolution, sample ceiling, light bounces, icosphere subdiv,
+# metaball step (nm), adaptive-noise threshold, and a per-frame wall-clock cap
+# in seconds (0 = uncapped).
+#
+# The cap is what makes 1080p tractable on CPU. Cycles + adaptive sampling +
+# OpenImageDenoise converges the easy regions fast and spends its remaining
+# budget on the noisy ones; bounding the wall clock means one awkward frame
+# (deep transmission through the translucent surface, say) cannot blow the
+# whole-sequence estimate. The denoiser cleans up whatever the cap left
+# unconverged, which for smooth molecular surfaces with no caustics is plenty.
 QUALITY = {
-    #            res_x res_y samples bounces ico  meta(nm)
-    "thumb":    (480,  270,   24,      4,     1,   0.075),
-    "preview":  (960,  540,   48,      6,     1,   0.055),
-    "final":    (1920, 1080, 220,     10,     2,   0.035),
+    #             res_x  res_y  samp  bnce ico  meta   athr   tcap(s)
+    "thumb":     (480,   270,    24,   4,   1,   0.075, 0.02,   0),
+    "preview":   (960,   540,    64,   6,   1,   0.055, 0.015,  0),
+    "hd":        (1920,  1080,  192,   8,   2,   0.035, 0.010, 40),
+    "final":     (1920,  1080,  384,  10,   2,   0.030, 0.005,  0),
 }
 
 
 def setup_world(quality: str, transparent: bool) -> None:
     sc = bpy.context.scene
-    rx, ry, samples, bounces, _, _ = QUALITY[quality]
+    rx, ry, samples, bounces, _, _, athr, tcap = QUALITY[quality]
     sc.render.engine = "CYCLES"
     sc.cycles.device = "CPU"
     sc.cycles.samples = samples
     sc.cycles.use_denoising = True
+    try:
+        sc.cycles.denoiser = "OPENIMAGEDENOISE"      # CPU denoiser, no GPU needed
+        sc.cycles.denoising_input_passes = "RGB_ALBEDO_NORMAL"
+    except (TypeError, AttributeError):
+        pass
     sc.cycles.max_bounces = bounces
     sc.cycles.diffuse_bounces = bounces
     sc.cycles.glossy_bounces = bounces
     sc.cycles.transmission_bounces = bounces
     sc.cycles.use_adaptive_sampling = True
-    sc.cycles.adaptive_threshold = 0.02
+    sc.cycles.adaptive_threshold = athr
+    sc.cycles.time_limit = float(tcap)               # 0 = no per-frame cap
     sc.render.resolution_x = rx
     sc.render.resolution_y = ry
     sc.render.resolution_percentage = 100
@@ -635,7 +652,7 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
     Returns (camera_eye, camera_target, lens, dof_distance).
     """
     ico = QUALITY[quality][4]
-    meta_res = QUALITY[quality][5]
+    meta_res = QUALITY[quality][5]  # tuple layout unchanged for indices 4,5
 
     m_atom = mat_attribute("atoms")
     m_e3 = mat_solid("e3", col("e3"), roughness=0.45)
@@ -892,7 +909,7 @@ def main() -> int:
     if args.list_shots:
         return 0
 
-    rx, ry, samples, _, _, _ = QUALITY[args.quality]
+    rx, ry, samples = QUALITY[args.quality][:3]
     print(f"[quality] {args.quality}: {rx}x{ry}, {samples} samples, CPU Cycles")
 
     os.makedirs(args.frames_dir, exist_ok=True)

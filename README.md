@@ -141,11 +141,21 @@ pip install bpy                 # ~370 MB wheel, CPython 3.11
 python3 render_blender.py --quality preview
 ```
 
-`--quality thumb|preview|final` trades resolution and samples. On four CPU
-cores, `thumb` (480×270) runs about 2 s/frame — roughly eleven minutes for
-the whole shot, which makes it usable for checking timing. `final`
-(1920×1080, 220 samples) is much slower on CPU and wants a GPU box or a
-cluster node; set `scene.cycles.device` accordingly.
+`--quality thumb|preview|hd|final` trades resolution against time. On four
+CPU cores:
+
+| tier | resolution | ~time/frame | full 315-frame shot |
+|---|---|---|---|
+| `thumb` | 480×270 | ~2 s | ~11 min — timing checks |
+| `preview` | 960×540 | ~7 s | ~35 min — look dev |
+| `hd` | 1920×1080 | ~55 s | **~4.5 h — the deliverable on CPU** |
+| `final` | 1920×1080 | minutes | GPU box only |
+
+`hd` is the one to render for delivery on a CPU-only box: full 1080p, but it
+caps path-tracing wall-clock per frame and lets OpenImageDenoise clean up the
+rest, so one awkward frame can't blow the estimate. `final` removes the cap
+and raises samples for a reference-quality pass — only sane on a GPU (set
+`scene.cycles.device = "GPU"`, or on Apple Silicon `"METAL"`).
 
 Three implementation notes, because each cost a debugging session:
 

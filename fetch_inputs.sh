@@ -109,7 +109,7 @@ if [ -s "$IN/AF-Q13490-F1.pdb" ]; then
     say "already present: $IN/AF-Q13490-F1.pdb"
 else
     # AlphaFold DB bumps the model version; try newest first.
-    for v in 4 3 2; do
+    for v in 6 5 4 3 2; do
         say "trying ${AFDB_BASE}_v${v}.pdb"
         if get "${AFDB_BASE}_v${v}.pdb" "$IN/AF-Q13490-F1.pdb"; then
             say "got model v${v}"
