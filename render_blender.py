@@ -654,6 +654,7 @@ class Assets:
         self.x_cond0 = self.condense[0].coords()
         self.x_cond1 = self.condense[-1].coords()
         self.x_final = np.vstack([self.breathe[0].coords(), self.x_seed])
+        self.x_binder = self.binder.coords()
         # Shot 5 ends wide enough to hold the ghost of the original beside the
         # binder -- that side-by-side comparison is the point of the shot.
         self.x_reveal = np.vstack([self.x_final, self.x_open])
@@ -689,23 +690,59 @@ def colour_protein(atoms, base, motif_rgb, hotspot_rgb, hotspot_mix=0.0):
 def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
     """
     Build the scene for one frame. `u` runs 0->1 within the shot.
-    Returns (camera_eye, camera_target, lens, dof_distance).
+    Returns (camera_eye, camera_target, lens, dof_distance, labels).
+
+    Everything here is deliberately physical: real crystal / model geometry,
+    real van der Waals radii, and transitions a molecule could actually undergo
+    on screen -- a domain fading out, a structure fading in, a slow orbit, the
+    ANM breathing. There is no emission ("glow"), no particle explosion and no
+    noise cloud; those read as VFX and the brief is realism. Parts appear and
+    disappear by opacity, which is how a molecular figure highlights and hides
+    regions, not by flying apart.
     """
     ico = QUALITY[quality][4]
-    meta_res = QUALITY[quality][5]  # tuple layout unchanged for indices 4,5
+    meta_res = QUALITY[quality][5]
 
-    m_atom = mat_attribute("atoms")
+    m_atom = mat_attribute("atoms", glow_boost=0.0)   # lit, not self-illuminated
     m_e3 = mat_solid("e3", col("e3"), roughness=0.45)
     m_motif = mat_solid("motif", col("motif"), roughness=0.35)
     m_binder = mat_solid("binder", col("binder"), roughness=0.38)
-    m_ghost = mat_solid("ghost", col("ghost"), roughness=0.6, alpha=0.12,
-                        transmission=0.85)
-    m_surf = mat_solid("surf", col("e3"), roughness=0.25, alpha=0.30,
-                       transmission=0.75)
 
     prot = [a for a in A.ref.atoms if a.record == "ATOM"]
     lig = [a for a in A.ref.atoms if a.resname == A.warhead] if A.warhead else []
     zn = [a for a in A.ref.atoms if a.resname == "ZN"]
+    motif_atoms = [a for a in A.seed.atoms if a.record == "ATOM"]
+
+    def centroid(atoms):
+        if not len(atoms):
+            return None
+        return np.array([[a.x, a.y, a.z] for a in atoms], dtype=float).mean(0)
+
+    c_lig, c_zn = centroid(lig), centroid(zn)
+    c_motif = centroid(motif_atoms)
+    c_binder = A.x_binder.mean(0) if len(A.x_binder) else A.pocket
+
+    full_len = A.metrics.get("full_length_residues")
+    bir3 = A.metrics.get("bir3_residues")
+    binder_len = A.metrics.get("binder_residues")
+    shrink = A.metrics.get("shrink_factor")
+    before_n = full_len or bir3
+    before_name = "cIAP1" if full_len else "cIAP1 BIR3"
+    labels: list = []
+
+    def surf_mat(name, cname, alpha, transmission=0.65, rough=0.25):
+        return mat_solid(name, col(cname), roughness=rough,
+                         alpha=max(alpha, 0.001), transmission=transmission)
+
+    def draw_ligand(scale_):
+        if lig:
+            lx, lr = atom_arrays(lig, scale_)
+            make_spheres("lig", lx, lr, np.tile(col("ligand"), (len(lx), 1)),
+                         None, ico + 1, m_atom)
+        if zn:
+            zx, zr = atom_arrays(zn, 0.95)
+            make_spheres("zn", zx, zr, np.tile(col("zinc"), (len(zx), 1)),
+                         None, ico + 1, m_atom)
 
     # ---------------------------------------------------------- shot 1
     if shot == "establish":
@@ -715,148 +752,156 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
         if len(ca) > 2:
             make_tube("bb", ca, ang(1.15), m_e3)
         cx, rr = atom_arrays(satoms, 1.0)
-        make_metaball_surface("surf", cx, rr * 1.55, m_surf, meta_res)
-        if lig:
-            lx, lr = atom_arrays(lig, 0.62)
-            make_spheres("lig", lx, lr,
-                         np.tile(col("ligand"), (len(lx), 1)),
-                         np.full(len(lx), 0.18), ico, m_atom)
-        if zn:
-            zx, zr = atom_arrays(zn, 0.95)
-            make_spheres("zn", zx, zr, np.tile(col("zinc"), (len(zx), 1)),
-                         None, ico + 1, m_atom)
+        make_metaball_surface("surf", cx, rr * 1.55,
+                              surf_mat("surf", "e3", 0.34), meta_res)
+        draw_ligand(0.62)
 
         lens, el = 48.0, 14.0
         az = lerp(-35.0, 55.0, ease(u, 2.0))
         d = fit_distance(A.x_open, A.full_centre, az, el, lens, 1.12)
         eye = orbit(A.full_centre, d, az, el)
-        return eye, A.full_centre, lens, d
+        labels = [
+            {"kind": "counter", "lines": [
+                (f"{before_name}  ·  {before_n} aa", "e3"),
+                ("E3 ubiquitin ligase (BIRC2)", None)]},
+            {"kind": "callout", "pos": A.full_centre, "color": "e3",
+             "text": before_name, "sub": "E3 ligase", "dx": 70, "dy": -70,
+             "opacity": smoothstep(u / 0.4)},
+        ]
+        return eye, A.full_centre, lens, d, labels
 
     # ---------------------------------------------------------- shot 2
     if shot == "pocket":
-        ignite = smoothstep((u - 0.35) / 0.5)
+        hi = smoothstep((u - 0.35) / 0.5)          # highlight ramps in by colour
         ca, _ = A.ref.ca_trace()
         make_tube("bb", ca, ang(1.10), m_e3)
         cx, rr = atom_arrays(prot, 1.0)
-        cols, glow = colour_protein(prot, col("e3dark"), col("motif"),
-                                    col("hotspot"), ignite)
+        cols, _glow = colour_protein(prot, col("e3dark"), col("motif"),
+                                     col("hotspot"), hi)
         keep = np.array([MOTIF_RANGE[0] <= a.resseq <= MOTIF_RANGE[1]
                          for a in prot])
         if keep.any():
             make_spheres("motifatoms", cx[keep], rr[keep] * 0.85,
-                         cols[keep], glow[keep] * 1.6, ico, m_atom)
-        make_metaball_surface("surf", cx, rr * 1.50, m_surf, meta_res * 1.15)
-        if lig:
-            lx, lr = atom_arrays(lig, 0.72)
-            make_spheres("lig", lx, lr, np.tile(col("ligand"), (len(lx), 1)),
-                         np.full(len(lx), 0.20 + 0.55 * ignite), ico + 1, m_atom)
-        if zn:
-            zx, zr = atom_arrays(zn, 1.0)
-            make_spheres("zn", zx, zr, np.tile(col("zinc"), (len(zx), 1)),
-                         None, ico + 1, m_atom)
+                         cols[keep], None, ico, m_atom)
+        make_metaball_surface("surf", cx, rr * 1.50,
+                              surf_mat("surf", "e3", 0.28), meta_res * 1.15)
+        draw_ligand(0.72)
 
         t = ease(u, 2.2)
         lens = lerp(48.0, 62.0, t)
         az, el = lerp(55.0, 88.0, t), lerp(14.0, 6.0, t)
-        # push from "the whole domain" to "the pocket and its shoulders"
         d = lerp(fit_distance(A.x_open, A.full_centre, az, el, lens, 1.12),
                  fit_distance(A.x_seed, A.pocket, az, el, lens, 1.05), t)
         centre = A.full_centre + (A.pocket - A.full_centre) * t
         eye = orbit(centre, d, az, el)
-        return eye, centre, lens, d
+        labels = [
+            {"kind": "callout", "pos": c_lig, "color": "ligand",
+             "text": "PROTAC warhead", "dx": 80, "dy": 30},
+            {"kind": "callout", "pos": c_motif, "color": "motif",
+             "text": "BIR3 pocket", "sub": "motif 312-325", "dx": -160, "dy": -60},
+            {"kind": "callout", "pos": c_zn, "color": "zinc",
+             "text": "Zn2+", "dx": 60, "dy": 60, "opacity": 0.9},
+        ]
+        return eye, centre, lens, d, labels
 
     # ---------------------------------------------------------- shot 3
+    # The domain fades out, leaving the retained pocket + warhead + Zn. No
+    # explosion: proteins do not fly apart into beads, and the brief is realism.
     if shot == "dissolve":
-        idx = min(int(u * (len(A.dissolve) - 1) + 0.5), len(A.dissolve) - 1)
-        frame = A.dissolve[idx]
-        fa = frame.atoms
-        held = np.array([(a.record == "HETATM")
-                         or (MOTIF_RANGE[0] <= a.resseq <= MOTIF_RANGE[1])
-                         for a in fa])
-        cx, rr = atom_arrays(fa, 1.0)
-
-        # bulk flies apart as beads that shrink and dim as they go
-        bulk = ~held & np.array([a.record == "ATOM" for a in fa])
-        if bulk.any():
-            d = np.linalg.norm(cx[bulk] - A.pocket, axis=1)
-            fade = np.clip(1.0 - (d - A.scale * 0.5) / (A.scale * 1.6), 0.06, 1.0)
-            rng = np.random.default_rng(4)
-            cols = np.array([shade(col("e3"), 0.75 + 0.5 * v)
-                             for v in rng.random(int(bulk.sum()))])
-            make_spheres("bulk", cx[bulk], rr[bulk] * 0.52 * fade,
-                         cols * fade[:, None], None, max(ico - 1, 0), m_atom)
-
-        keep = held & np.array([a.record == "ATOM" for a in fa])
-        if keep.any():
-            ca = np.array([[a.x, a.y, a.z] for a, k in zip(fa, keep)
-                           if k and a.name.strip() == "CA"])
-            if len(ca) > 2:
-                make_tube("motifbb", ca, ang(1.25), m_motif)
-            make_spheres("motif", cx[keep], rr[keep] * 0.80,
-                         np.tile(col("motif"), (int(keep.sum()), 1)),
-                         np.full(int(keep.sum()), 0.35), ico, m_atom)
-        het = np.array([a.record == "HETATM" for a in fa])
-        if het.any():
-            hc = np.array([col("zinc") if a.resname == "ZN" else col("ligand")
-                           for a, h in zip(fa, het) if h])
-            make_spheres("het", cx[het], rr[het] * 0.75, hc,
-                         np.full(int(het.sum()), 0.55), ico + 1, m_atom)
+        fade = 1.0 - ease(u, 2.0)                  # 1 -> 0
+        if fade > 0.02:
+            ca, _ = A.ref.ca_trace()
+            make_tube("bb", ca, ang(1.10),
+                      mat_solid("e3f", col("e3"), 0.45, alpha=max(fade, 0.02)))
+            cx, rr = atom_arrays(prot, 1.0)
+            make_metaball_surface("surf", cx, rr * 1.50,
+                                  surf_mat("surf", "e3", 0.42 * fade,
+                                           transmission=0.15), meta_res)
+        mca = np.array([[a.x, a.y, a.z] for a in motif_atoms
+                        if a.name.strip() == "CA"])
+        if len(mca) > 2:
+            make_tube("motifbb", mca, ang(1.30), m_motif)
+        mx, mrr = atom_arrays(motif_atoms, 0.82)
+        make_spheres("motif", mx, mrr, np.tile(col("motif"), (len(mx), 1)),
+                     None, ico, m_atom)
+        draw_ligand(0.75)
 
         lens = 58.0
         az, el = lerp(88.0, 118.0, u), lerp(6.0, 18.0, u)
-        # Hold wide enough to watch the bulk leave, then settle on what is left.
         d = lerp(fit_distance(A.x_ref, A.pocket, az, el, lens, 1.30),
-                 fit_distance(A.x_seed, A.pocket, az, el, lens, 1.60),
+                 fit_distance(A.x_seed, A.pocket, az, el, lens, 1.55),
                  ease(u, 2.0))
         eye = orbit(A.pocket, d, az, el)
-        return eye, A.pocket, lens, d
+        labels = [
+            {"kind": "callout", "pos": c_motif, "color": "motif",
+             "text": "retained pocket", "dx": 80, "dy": -60},
+            {"kind": "callout", "pos": c_lig, "color": "ligand",
+             "text": "PROTAC warhead", "dx": 70, "dy": 50},
+        ]
+        if fade > 0.25:
+            labels.append({"kind": "callout", "pos": A.ref.centre(), "color": "e3",
+                           "text": before_name, "opacity": fade,
+                           "dx": -150, "dy": -40})
+        return eye, A.pocket, lens, d, labels
 
     # ---------------------------------------------------------- shot 4
+    # The de novo binder appears around the retained pocket. A REAL RFdiffusion
+    # trajectory (real data) is played if supplied; otherwise the binder simply
+    # fades into place -- no fabricated "noise cloud" on screen.
     if shot == "condense":
-        idx = min(int(u * (len(A.condense) - 1) + 0.5), len(A.condense) - 1)
-        frame = A.condense[idx]
-        cx = frame.coords()
-        n = len(cx)
-        # Beads, not ribbon: mid-diffusion there is no backbone geometry to
-        # assign secondary structure from, and a cartoon degenerates into
-        # spikes. Beads are honest at every timestep.
-        order = np.linspace(0.0, 1.0, n)
-        base = np.array(col("binder"))
-        hi = np.array(col("binderhi"))
-        cols = base[None, :] * (1 - order[:, None]) + hi[None, :] * order[:, None]
-        settle = smoothstep((u - 0.25) / 0.75)
-        rr = np.full(n, lerp(ang(2.1), ang(1.5), settle))
-        glow = np.full(n, lerp(0.55, 0.06, settle))
-        make_spheres("cond", cx, rr, cols, glow, ico, m_atom)
-        if settle > 0.45 and n > 3:
-            make_tube("condbb", cx, ang(1.05) * (settle - 0.45) / 0.55, m_binder)
-
-        sx, sr = atom_arrays([a for a in A.seed.atoms if a.record == "ATOM"], 0.80)
-        if len(sx):
-            make_spheres("seed", sx, sr,
-                         np.tile(col("motif"), (len(sx), 1)),
-                         np.full(len(sx), 0.30), ico, m_atom)
+        real_traj = A.metrics.get("trajectories", {}).get(
+            "condense", {}).get("source") == "rfdiffusion"
+        mca = np.array([[a.x, a.y, a.z] for a in motif_atoms
+                        if a.name.strip() == "CA"])
+        if len(mca) > 2:
+            make_tube("motifbb", mca, ang(1.30), m_motif)
+        mx, mrr = atom_arrays(motif_atoms, 0.80)
+        make_spheres("motif", mx, mrr, np.tile(col("motif"), (len(mx), 1)),
+                     None, ico, m_atom)
         seed_het = [a for a in A.seed.atoms if a.record == "HETATM"]
         if seed_het:
             hx, hr = atom_arrays(seed_het, 0.75)
             hc = np.array([col("zinc") if a.resname == "ZN" else col("ligand")
                            for a in seed_het])
-            make_spheres("seedhet", hx, hr, hc, np.full(len(hx), 0.55),
-                         ico + 1, m_atom)
+            make_spheres("seedhet", hx, hr, hc, None, ico + 1, m_atom)
+
+        settle = ease(u, 2.0)
+        if real_traj:
+            idx = min(int(u * (len(A.condense) - 1) + 0.5), len(A.condense) - 1)
+            cxr = A.condense[idx].coords()
+            make_spheres("cond", cxr, np.full(len(cxr), ang(1.7)),
+                         np.tile(col("binder"), (len(cxr), 1)), None, ico, m_atom)
+            if settle > 0.5 and len(cxr) > 3:
+                make_tube("condbb", cxr, ang(1.15) * (settle - 0.5) / 0.5, m_binder)
+        else:
+            bca, _ = A.binder.ca_trace()
+            if len(bca) > 2 and settle > 0.02:
+                make_tube("binderbb", bca, ang(1.25) * settle, m_binder)
+            bx, brr = atom_arrays([a for a in A.binder.atoms
+                                   if a.record == "ATOM"], 1.0)
+            make_metaball_surface("bsurf", bx, brr * 1.50,
+                                  surf_mat("bsurf", "binder", 0.30 * settle,
+                                           transmission=0.75), meta_res)
 
         lens = 56.0
         az, el = lerp(118.0, 168.0, u), lerp(18.0, 10.0, u)
-        # Framed off the cloud's own extent at both ends, so the camera
-        # closes in exactly as fast as the binder condenses.
-        d = lerp(fit_distance(A.x_cond0, A.pocket, az, el, lens, 1.02),
-                 fit_distance(A.x_cond1, A.pocket, az, el, lens, 1.14),
+        d = lerp(fit_distance(A.x_seed, A.pocket, az, el, lens, 1.35),
+                 fit_distance(A.x_binder, c_binder, az, el, lens, 1.15),
                  smoothstep(u))
-        eye = orbit(A.pocket, d, az, el)
-        return eye, A.pocket, lens, d
+        centre = A.pocket + (c_binder - A.pocket) * smoothstep(u)
+        eye = orbit(centre, d, az, el)
+        labels = [
+            {"kind": "callout", "pos": c_motif, "color": "motif",
+             "text": "retained pocket", "dx": -160, "dy": 50},
+            {"kind": "callout", "pos": c_binder, "color": "binder",
+             "text": "de novo binder", "opacity": smoothstep((u - 0.2) / 0.5),
+             "dx": 80, "dy": -60},
+        ]
+        return eye, centre, lens, d, labels
 
     # ---------------------------------------------------------- shot 5
     if shot == "reveal":
-        idx = int(u * (len(A.breathe) - 1) * 1.0) % max(len(A.breathe), 1)
+        idx = int(u * (len(A.breathe) - 1)) % max(len(A.breathe), 1)
         frame = A.breathe[idx]
         fa = frame.atoms
         cx, rr = atom_arrays(fa, 1.0)
@@ -871,7 +916,7 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
                 make_tube("binderbb", ca, ang(1.25), m_binder)
             make_metaball_surface("bsurf", cx[binder_mask],
                                   rr[binder_mask] * 1.50,
-                                  mat_solid("bs", col("binder"), 0.3, 0.22, 0.0, 0.8),
+                                  surf_mat("bs", "binder", 0.22, transmission=0.75),
                                   meta_res)
         if motif_mask.any():
             ca = np.array([[a.x, a.y, a.z] for a, m in zip(fa, motif_mask)
@@ -880,30 +925,192 @@ def build_frame(A: Assets, shot: str, u: float, quality: str) -> tuple:
                 make_tube("motifbb", ca, ang(1.35), m_motif)
             make_spheres("motif", cx[motif_mask], rr[motif_mask] * 0.80,
                          np.tile(col("motif"), (int(motif_mask.sum()), 1)),
-                         np.full(int(motif_mask.sum()), 0.25), ico, m_atom)
+                         None, ico, m_atom)
         if het_mask.any():
             hc = np.array([col("zinc") if a.resname == "ZN" else col("ligand")
                            for a, m in zip(fa, het_mask) if m])
             make_spheres("het", cx[het_mask], rr[het_mask] * 0.78, hc,
-                         np.full(int(het_mask.sum()), 0.5), ico + 1, m_atom)
+                         None, ico + 1, m_atom)
 
-        # ghost of what we started from, fading up behind
+        # faint superposition of the original, as a labelled size reference
         gu = smoothstep((u - 0.25) / 0.6)
         if gu > 0.02:
             gca, _ = A.opening.ca_trace()
             if len(gca) > 2:
-                make_tube("ghost", gca, ang(0.85) * gu, m_ghost)
+                make_tube("ghost", gca, ang(0.85) * gu,
+                          mat_solid("ghost", col("ghost"), 0.6,
+                                    alpha=0.10 * gu, transmission=0.9))
 
         lens = lerp(56.0, 46.0, u)
         az, el = lerp(168.0, 205.0, u), lerp(10.0, 20.0, u)
-        # Pull back far enough that the ghost of the original fits too.
         d = lerp(fit_distance(A.x_final, A.pocket, az, el, lens, 1.14),
                  fit_distance(A.x_reveal, A.pocket, az, el, lens, 1.10),
                  ease(u, 2.0))
         eye = orbit(A.pocket, d, az, el)
-        return eye, A.pocket, lens, d
+        counter = [(f"de novo binder  ·  {binder_len} aa", "binder")]
+        if shrink:
+            counter.append((f"{shrink}x smaller than {before_name}", None))
+        labels = [
+            {"kind": "callout", "pos": c_binder, "color": "binder",
+             "text": "de novo binder", "sub": f"{binder_len} aa",
+             "dx": 70, "dy": -70},
+            {"kind": "counter", "lines": counter},
+        ]
+        if gu > 0.3 and full_len:
+            labels.append({"kind": "callout", "pos": A.opening.centre(),
+                           "color": "ghost", "text": f"original {before_name}",
+                           "sub": f"{before_n} aa", "opacity": 0.55 * gu,
+                           "dx": -200, "dy": -30})
+        return eye, A.pocket, lens, d, labels
 
     raise ValueError(f"unknown shot {shot}")
+
+
+
+# ---------------------------------------------------------------------------
+# labels -- drawn on top of the render with Pillow, anchored to real 3D points
+# ---------------------------------------------------------------------------
+#
+# Labels are a post-process, not scene geometry: the frame path-traces, then
+# each anchor's world position is projected to screen with the same camera and
+# the text is drawn over the PNG. Doing it after render means a label never
+# adds noise to the path tracer and never needs its own lighting, and the leader
+# line can be pixel-crisp regardless of render resolution.
+
+def _rgb255(name: str) -> tuple:
+    return tuple(int(round(c * 255)) for c in hex_rgb(PALETTE[name]))
+
+
+_FONT_CACHE: dict = {}
+
+
+def find_font(size: int, bold: bool = False):
+    """A real TTF if one is on the box, else Pillow's bitmap default. Searched
+    across Linux/macOS/Windows so the same script labels correctly wherever it
+    renders."""
+    from PIL import ImageFont
+    key = (size, bold)
+    if key in _FONT_CACHE:
+        return _FONT_CACHE[key]
+    names = ([
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/HelveticaNeue.ttc",
+        "/Library/Fonts/Arial Bold.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
+    ] if bold else [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/Library/Fonts/Arial.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    ])
+    font = None
+    for nm in names:
+        if os.path.exists(nm):
+            try:
+                font = ImageFont.truetype(nm, size)
+                break
+            except OSError:
+                continue
+    if font is None:
+        try:
+            font = ImageFont.load_default(size)
+        except TypeError:                     # older Pillow: no size arg
+            font = ImageFont.load_default()
+    _FONT_CACHE[key] = font
+    return font
+
+
+def project(scene, cam, world_nm: np.ndarray, res: tuple):
+    """World point (nm) -> (px, py, in_front). in_front is False when the point
+    is behind the camera, where the projection wraps and must be discarded."""
+    from bpy_extras.object_utils import world_to_camera_view
+    co = world_to_camera_view(scene, cam, mathutils.Vector(
+        (float(world_nm[0]), float(world_nm[1]), float(world_nm[2]))))
+    px = co.x * res[0]
+    py = (1.0 - co.y) * res[1]
+    return px, py, (co.z > 0.0)
+
+
+def draw_labels(png_path: str, scene, cam, labels: list, res: tuple) -> None:
+    """Composite callouts, a title and a counter block onto a rendered PNG."""
+    if not labels:
+        return
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return
+
+    base = Image.open(png_path).convert("RGBA")
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(overlay)
+    W, H = base.size
+    scale = H / 1080.0                          # keep type size constant across tiers
+    f_call = find_font(int(30 * scale), bold=True)
+    f_sub = find_font(int(22 * scale))
+    f_title = find_font(int(40 * scale), bold=True)
+    f_count = find_font(int(30 * scale), bold=True)
+
+    def textsize(s, font):
+        l, t, r, b = d.textbbox((0, 0), s, font=font)
+        return r - l, b - t
+
+    def pill(xy, s, font, fg, bg=(8, 12, 18, 205), pad=8):
+        pad = int(pad * scale)
+        w, h = textsize(s, font)
+        x, y = xy
+        d.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad],
+                            radius=int(7 * scale), fill=bg)
+        d.text((x, y), s, font=font, fill=fg)
+        return w + 2 * pad, h + 2 * pad
+
+    placed = []                                  # crude de-overlap of callouts
+
+    for lab in labels:
+        kind = lab.get("kind", "callout")
+
+        if kind == "callout":
+            pt = project(scene, cam, lab["pos"], res)
+            if pt is None or not pt[2]:
+                continue
+            px, py, _ = pt
+            if not (-0.1 * W < px < 1.1 * W and -0.1 * H < py < 1.1 * H):
+                continue
+            colr = _rgb255(lab.get("color", "ghost"))
+            op = int(255 * lab.get("opacity", 1.0))
+            dx = lab.get("dx", 70) * scale
+            dy = lab.get("dy", -55) * scale
+            tx, ty = px + dx, py + dy
+            # nudge down if it would sit on an already-placed label
+            for (ox, oy) in placed:
+                if abs(ty - oy) < 34 * scale and abs(tx - ox) < 240 * scale:
+                    ty = oy + 40 * scale
+            placed.append((tx, ty))
+            # anchor dot + leader line
+            r = int(5 * scale)
+            d.ellipse([px - r, py - r, px + r, py + r],
+                      fill=(*colr, op), outline=(255, 255, 255, op), width=max(1, int(scale)))
+            d.line([(px, py), (tx - 6 * scale, ty + textsize(lab["text"], f_call)[1] / 2)],
+                   fill=(255, 255, 255, min(op, 180)), width=max(1, int(2 * scale)))
+            w, _h = pill((tx, ty), lab["text"], f_call, (*colr, op))
+            if lab.get("sub"):
+                pill((tx, ty + 34 * scale), lab["sub"], f_sub, (230, 233, 238, op),
+                     bg=(8, 12, 18, 170), pad=6)
+
+        elif kind == "title":
+            m = int(56 * scale)
+            pill((m, m), lab["text"], f_title, (238, 240, 244, 255))
+
+        elif kind == "counter":
+            lines = lab["lines"]
+            m = int(56 * scale)
+            y = H - m - int(len(lines) * 40 * scale)
+            for i, (s, cname) in enumerate(lines):
+                fg = (*_rgb255(cname), 255) if cname else (238, 240, 244, 255)
+                pill((m, y + i * int(44 * scale)), s, f_count if i == 0 else f_sub, fg)
+
+    Image.alpha_composite(base, overlay).convert("RGB").save(png_path)
 
 
 # ---------------------------------------------------------------------------
@@ -940,6 +1147,8 @@ def main() -> int:
                    help="alpha background; writes PNGs only, mp4 cannot carry alpha")
     p.add_argument("--no-encode", action="store_true")
     p.add_argument("--list-shots", action="store_true")
+    p.add_argument("--no-labels", action="store_true",
+                   help="skip the component labels drawn over each frame")
     args = p.parse_args()
 
     A = Assets(args.out_dir)
@@ -974,9 +1183,9 @@ def main() -> int:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         purge()
         setup_world(args.quality, args.transparent, args.device)
-        eye, target, lens, dof = build_frame(A, shot, u, args.quality)
+        eye, target, lens, dof, labels = build_frame(A, shot, u, args.quality)
         setup_lights(np.asarray(target), float(A.scale))
-        place_camera(np.asarray(eye), np.asarray(target), lens, dof, 3.2)
+        cam = place_camera(np.asarray(eye), np.asarray(target), lens, dof, 3.2)
 
         if done == 0:
             print(f"[device] Cycles backend engaged: "
@@ -984,6 +1193,10 @@ def main() -> int:
         out = os.path.join(args.frames_dir, f"f{gi:05d}.png")
         bpy.context.scene.render.filepath = out
         bpy.ops.render.render(write_still=True)
+        if not args.no_labels:
+            rx, ry = QUALITY[args.quality][:2]
+            draw_labels(out if out.endswith(".png") else out + ".png",
+                        bpy.context.scene, cam, labels, (rx, ry))
         done += 1
         el = time.time() - t_start
         rate = el / done

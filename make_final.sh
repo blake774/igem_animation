@@ -30,11 +30,10 @@ say(){ printf '\n=== %s ===\n' "$*"; }
 prep_args=( --design "$DESIGN" --receptor "$RECEPTOR" )
 [ -f "$FULL" ] && prep_args+=( --fulllength "$FULL" ) \
                || echo "note: no full-length model; shot 1 falls back to BIR3"
-# --condense-sec 4.0: the synthetic condensation flickers at the default
-# duration (3.49 A/frame vs the 3.0 A tolerance). 4.0 s spreads it over more
-# frames and drops the jump to 2.6 A. Harmless when a real --rfd-traj is
-# supplied, so it is unconditional here.
-prep_args+=( --condense-sec 4.0 )
+# Note: the Blender renderer fades the binder in for shot 4 (it does not play
+# the synthetic condensation trajectory), so the old --condense-sec flicker
+# workaround is no longer needed here. Add it back only if you render shot 4
+# through ChimeraX from a synthetic condensation.
 [ -f "$TRAJ" ] && prep_args+=( --rfd-traj "$TRAJ" ) \
                || echo "note: no trajectory; shot 4 will be synthetic"
 
@@ -45,7 +44,7 @@ say "validate.py"
 python3 validate.py || echo "validate reported an issue -- read it before shipping"
 
 say "lint_cxc.py"
-python3 lint_cxc.py
+python3 lint_cxc.py || echo "lint reported issues (only affects the ChimeraX path, not this render)"
 
 say "render ($QUALITY) -> $MOVIE"
 python3 render_blender.py --quality "$QUALITY" --device "$DEVICE" --movie "$MOVIE"

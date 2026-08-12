@@ -151,6 +151,16 @@ CPU cores:
 | `hd` | 1920×1080 | ~55 s | **~4.5 h — the deliverable on CPU** |
 | `final` | 1920×1080 | minutes | GPU box only |
 
+**Labels & realism.** Every frame is overlaid with component labels
+(protein, PROTAC warhead, retained pocket, Zn²⁺, de novo binder) drawn with
+Pillow (`pip install pillow`); anchors are real 3D points projected through the
+camera, so a callout tracks its component as the shot moves. Disable with
+`--no-labels`. The transitions are deliberately physical — the domain fades
+out to leave the pocket, the binder fades in around it, and the final complex
+breathes on its ANM modes. There is no glow, no particle explosion and no
+synthetic "noise cloud"; a real RFdiffusion trajectory, if supplied, is the
+one thing that plays literally.
+
 `hd` is the one to render for delivery on a CPU-only box: full 1080p, but it
 caps path-tracing wall-clock per frame and lets OpenImageDenoise clean up the
 rest, so one awkward frame can't blow the estimate. `final` removes the cap
