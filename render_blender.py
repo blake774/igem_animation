@@ -403,11 +403,51 @@ QUALITY = {
 }
 
 
-def setup_world(quality: str, transparent: bool) -> None:
+def enable_gpu(kind: str) -> str:
+    """
+    Turn on GPU rendering. `kind` is auto | metal | cuda | optix | hip | cpu.
+
+    On Apple Silicon this is the difference between minutes and hours: the
+    same shot that takes ~55 s/frame on four CPU cores runs several times
+    faster on the Metal GPU. Returns the backend that actually engaged, so
+    the caller can print it and the user knows CPU didn't silently win.
+    """
+    if kind == "cpu":
+        return "CPU"
+    try:
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+    except (KeyError, AttributeError):
+        return "CPU"
+
+    order = {
+        "auto": ["METAL", "OPTIX", "CUDA", "HIP", "ONEAPI"],
+        "metal": ["METAL"], "cuda": ["CUDA"], "optix": ["OPTIX"],
+        "hip": ["HIP"], "oneapi": ["ONEAPI"],
+    }.get(kind, ["METAL", "OPTIX", "CUDA", "HIP", "ONEAPI"])
+
+    available = {opt.identifier for opt in
+                 prefs.bl_rna.properties["compute_device_type"].enum_items}
+    for backend in order:
+        if backend not in available:
+            continue
+        prefs.compute_device_type = backend
+        prefs.get_devices()
+        gpus = [d for d in prefs.devices if d.type == backend]
+        if not gpus:
+            continue
+        for d in prefs.devices:
+            d.use = (d.type == backend) or (d.type == "CPU" and backend == "OPTIX")
+        return backend
+    return "CPU"
+
+
+def setup_world(quality: str, transparent: bool, device: str = "cpu") -> None:
     sc = bpy.context.scene
     rx, ry, samples, bounces, _, _, athr, tcap = QUALITY[quality]
     sc.render.engine = "CYCLES"
-    sc.cycles.device = "CPU"
+    backend = enable_gpu(device)
+    sc.cycles.device = "CPU" if backend == "CPU" else "GPU"
+    setup_world._backend = backend                   # for the driver to report
     sc.cycles.samples = samples
     sc.cycles.use_denoising = True
     try:
@@ -888,6 +928,11 @@ def main() -> int:
     p.add_argument("--frames-dir", default="output/frames")
     p.add_argument("--movie", default="output/e3_shrink_blender.mp4")
     p.add_argument("--quality", default="preview", choices=sorted(QUALITY))
+    p.add_argument("--device", default="cpu",
+                   choices=["cpu", "auto", "metal", "cuda", "optix", "hip", "oneapi"],
+                   help="render device. 'metal' on Apple Silicon, 'cuda'/'optix' "
+                        "on NVIDIA; 'auto' picks the first GPU backend present. "
+                        "Default cpu.")
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--start", type=int, default=0)
     p.add_argument("--end", type=int, default=-1)
@@ -910,7 +955,7 @@ def main() -> int:
         return 0
 
     rx, ry, samples = QUALITY[args.quality][:3]
-    print(f"[quality] {args.quality}: {rx}x{ry}, {samples} samples, CPU Cycles")
+    print(f"[quality] {args.quality}: {rx}x{ry}, {samples} samples; device request={args.device}")
 
     os.makedirs(args.frames_dir, exist_ok=True)
     end = total - 1 if args.end < 0 else min(args.end, total - 1)
@@ -928,11 +973,14 @@ def main() -> int:
         shot, u = timeline[gi]
         bpy.ops.wm.read_factory_settings(use_empty=True)
         purge()
-        setup_world(args.quality, args.transparent)
+        setup_world(args.quality, args.transparent, args.device)
         eye, target, lens, dof = build_frame(A, shot, u, args.quality)
         setup_lights(np.asarray(target), float(A.scale))
         place_camera(np.asarray(eye), np.asarray(target), lens, dof, 3.2)
 
+        if done == 0:
+            print(f"[device] Cycles backend engaged: "
+                  f"{getattr(setup_world, '_backend', 'CPU')}")
         out = os.path.join(args.frames_dir, f"f{gi:05d}.png")
         bpy.context.scene.render.filepath = out
         bpy.ops.render.render(write_still=True)
